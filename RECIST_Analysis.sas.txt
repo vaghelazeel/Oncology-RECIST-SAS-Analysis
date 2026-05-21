@@ -1,0 +1,160 @@
+/* Module 1 - Patient Data */
+/* I am creating a dataset with 15 cancer patients */
+/* Baseline_SLD = sum of tumour sizes in mm at start of trial */
+
+data patients;
+input PatientID $ Age Sex $ Treatment $ Baseline_SLD;
+datalines;
+P001 45 M TRT_A 85.2
+P002 62 F TRT_B 120.5
+P003 55 M TRT_A 67.3
+P004 71 F TRT_B 95.8
+P005 48 M TRT_A 110.2
+P006 59 F TRT_A 78.6
+P007 66 M TRT_B 145.3
+P008 52 F TRT_B 88.4
+P009 43 M TRT_A 102.7
+P010 68 F TRT_A 55.9
+P011 57 M TRT_B 130.1
+P012 61 F TRT_A 72.4
+P013 49 M TRT_B 98.3
+P014 74 F TRT_A 115.6
+P015 53 M TRT_B 60.8
+;
+run;
+
+/* print the table to check it looks right */
+proc print data=patients;
+title "Patient List - Baseline Data";
+run;
+
+/* Module 2 - Follow up tumour measurements */
+/* Week 8 and Week 16 after treatment started */
+
+data followup;
+input PatientID $ Week8_SLD Week16_SLD;
+datalines;
+P001 72.4 58.3
+P002 98.2 110.5
+P003 30.1 0.0
+P004 88.6 102.3
+P005 85.3 70.1
+P006 55.2 40.8
+P007 160.4 175.2
+P008 70.1 55.6
+P009 90.5 95.2
+P010 28.4 15.2
+P011 115.3 125.8
+P012 50.3 38.9
+P013 80.2 88.4
+P014 95.6 78.3
+P015 45.2 30.1
+;
+run;
+
+proc print data=followup;
+title "Follow-up Tumour Measurements";
+run;
+
+/* Module 3 - RECIST 1.1 Classification */
+/* merge both datasets first */
+
+data combined;
+merge patients followup;
+by PatientID;
+
+/* calculate % change from baseline to week 16 */
+pct_change = ((Week16_SLD - Baseline_SLD) / Baseline_SLD) * 100;
+
+/* apply RECIST 1.1 rules */
+/* CR = tumour completely gone */
+/* PR = shrunk by 30% or more */
+/* PD = grown by 20% or more */
+/* SD = everything else */
+
+if Week16_SLD = 0 then Response = "CR";
+else if pct_change le -30 then Response = "PR";
+else if pct_change ge 20 then Response = "PD";
+else Response = "SD";
+
+run;
+
+proc print data=combined;
+var PatientID Treatment Baseline_SLD Week16_SLD pct_change Response;
+title "RECIST 1.1 Response Classification";
+run;
+
+/* Module 4 - Summary Statistics */
+/* how many patients in each response category */
+
+proc freq data=combined;
+tables Response / nocum;
+title "Overall Response Rate";
+run;
+
+/* response by treatment arm */
+proc freq data=combined;
+tables Treatment*Response / nocum nopercent;
+title "Response by Treatment Arm";
+run;
+
+/* average tumour change by treatment */
+proc means data=combined mean std min max;
+var pct_change;
+class Treatment;
+title "Average % Tumour Change by Treatment";
+run;
+
+/* Module 5 - Waterfall Plot */
+/* standard chart in oncology to show tumour response per patient */
+
+/* sort by pct_change so bars go from best to worst response */
+proc sort data=combined out=sorted;
+by pct_change;
+run;
+
+proc sgplot data=sorted;
+vbar PatientID / response=pct_change 
+                 group=Response
+                 groupdisplay=cluster;
+refline -30 / axis=y lineattrs=(color=green pattern=dash);
+refline 20 / axis=y lineattrs=(color=red pattern=dash);
+xaxis label="Patient ID";
+yaxis label="% Change from Baseline" values=(-110 to 30 by 10);
+
+/* Module 5 - Waterfall Plot */
+/* standard chart in oncology to show tumour response per patient */
+
+/* sort by pct_change so bars go from best to worst response */
+proc sort data=combined out=sorted;
+by pct_change;
+run;
+
+proc sgplot data=sorted;
+vbar PatientID / response=pct_change 
+                 group=Response
+                 groupdisplay=cluster;
+refline -30 / axis=y lineattrs=(color=green pattern=dash);
+refline 20 / axis=y lineattrs=(color=red pattern=dash);
+xaxis label="Patient ID";
+yaxis label="% Change from Baseline" values=(-110 to 30 by 10);
+title "Waterfall Plot - Tumour Response (RECIST 1.1)";
+run;
+
+/* Module 6 - Final Summary Report */
+
+data combined2;
+set combined;
+if Response in ("CR","PR") then ORR = "Responder";
+else ORR = "Non-Responder";
+run;
+
+proc freq data=combined2;
+tables ORR*Treatment / nocum nopercent;
+title "Objective Response Rate by Treatment Arm";
+run;
+
+proc freq data=combined2;
+tables Response*Treatment / nocum nopercent;
+title "Response by Treatment Arm";
+run;
